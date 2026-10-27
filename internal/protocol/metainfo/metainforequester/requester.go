@@ -295,6 +295,8 @@ func uintToBigEndian4(i uint) []byte {
 
 func readAllPieces(r io.Reader, metadataSize uint) ([]byte, error) {
 	metadataBytes := make([]byte, metadataSize)
+	pieceSize := int(math.Pow(2, 14))
+	receivedPieces := make([]bool, (int(metadataSize)+pieceSize-1)/pieceSize)
 
 	receivedSize := uint(0)
 	for receivedSize < metadataSize {
@@ -327,6 +329,17 @@ func readAllPieces(r io.Reader, metadataSize uint) ([]byte, error) {
 				return nil, errors.New("metadataPiece > 16kiB")
 			}
 
+			piece := rExtDict.Piece
+			if piece < 0 || piece >= len(receivedPieces) || receivedPieces[piece] {
+				return nil, fmt.Errorf("invalid or duplicate metadata piece index: %d", piece)
+			}
+
+			start := piece * pieceSize
+			if start+len(metadataPiece) > len(metadataBytes) {
+				return nil, errors.New("metadataPiece exceeds metadata size")
+			}
+
+			receivedPieces[piece] = true
 			receivedSize += uint(len(metadataPiece))
 			// ... if the length of @metadataPiece is less than 16kiB AND metadataBytes is NOT
 			// complete then we err.
@@ -338,11 +351,7 @@ func readAllPieces(r io.Reader, metadataSize uint) ([]byte, error) {
 				return nil, errors.New("receivedSize > metadataSize")
 			}
 
-			piece := rExtDict.Piece
-			copy(
-				metadataBytes[piece*int(math.Pow(2, 14)):piece*int(math.Pow(2, 14))+len(metadataPiece)],
-				metadataPiece,
-			)
+			copy(metadataBytes[start:start+len(metadataPiece)], metadataPiece)
 		}
 	}
 
